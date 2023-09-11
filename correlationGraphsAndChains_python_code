@@ -1,0 +1,162 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+import matplotlib.pyplot as plt
+import networkx as nx
+
+#INPUT
+
+qF = "Class" #final state (feature of the dataset)
+data = "masterGraph_dataset.csv" #dataset in the CSV format
+sep = ";" #separator used in the dataset
+method = 'pearson' #correlation coefficient method ('pearson', 'spearman', 'kendall')
+border = 0.4 #border of correlation importance
+corr_type = "full" #type of graphical model ("full", "chain")
+
+# SETUP
+
+#function for unique list listing
+def unique(list1):
+    x = np.array(list1)
+    print(np.unique(x))
+
+# load dataset
+df = pd.read_csv(data, sep = sep)
+df = df.dropna()
+  
+# correlation matrix and correlation list
+corr_mat = df.corr(method = method)
+
+print("Correlation matrix:")
+print(corr_mat)
+print()
+
+upper_corr_mat = corr_mat.where(np.triu(np.ones(corr_mat.shape), k=1).astype(bool))
+unique_pairs = upper_corr_mat.unstack().dropna()
+unique_pairs_max = unique_pairs.groupby(level=0).max()
+unique_pairs_min = unique_pairs.groupby(level=0).min()
+
+print("Correlation pairs:")
+print(unique_pairs)
+print()
+
+print("Correlation maxima:")
+print(unique_pairs_max)
+print()
+
+print("Correlation minima:")
+print(unique_pairs_min)
+print()
+
+
+# SETUP OF CORRELATION GRAPHICAL MODEL 
+
+if corr_type == "full":
+
+    G = nx.Graph()
+
+    for k1, v1 in unique_pairs.items():
+        for k2, v2 in unique_pairs_max.items():
+            for k3, v3 in unique_pairs_min.items():
+                if v1 == v2:
+                    #if v1 > border:
+                        G.add_edge(k1[0], k1[1], weight = round(v1, 3))
+                elif v1 == v3:
+                    #if v1 < border*-1:
+                        G.add_edge(k1[0], k1[1], weight = round(v1, 3))
+
+    out_strong = [(u,v) for (u,v,d) in G.edges(data = True) if d["weight"] > border or d["weight"] < border*-1]
+    out_all = [(u,v) for (u,v,d) in G.edges(data = True) if d["weight"] > -2]
+
+    pos = nx.circular_layout(G)
+
+    nx.draw_networkx_nodes(G, pos, node_size = 10, node_color ='black', node_shape = 'o')
+    nx.draw_networkx_edges(G, pos, edgelist = out_all, width = 1, style = ":")
+    nx.draw_networkx_edges(G, pos, edgelist = out_strong, width = 2)
+
+    pos_higher = {}
+
+    for k, v in pos.items():
+        if(v[1]>0):
+            pos_higher[k] = (v[0]-0.1, v[1]+0.1)
+        else:
+            pos_higher[k] = (v[0]-0.1, v[1]-0.1)
+
+    nx.draw_networkx_labels(G, pos_higher, font_size = 10, font_family = "sans-serif")
+
+    labs = nx.get_edge_attributes(G, "weight")
+    nx.draw_networkx_edge_labels(G, pos, labs, label_pos = 0.33, font_size = 8)
+
+elif corr_type == "chain":
+
+    G = nx.Graph()
+
+    for k1, v1 in unique_pairs.items():
+        for k2, v2 in unique_pairs_max.items():
+            for k3, v3 in unique_pairs_min.items():
+                if v1 == v2:
+                    if v1 > border:
+                        G.add_edge(k1[0], k1[1], weight = round(v1, 3))
+                elif v1 == v3:
+                    if v1 < border*-1:
+                        G.add_edge(k1[0], k1[1], weight = round(v1, 3))
+
+    out_strong = [(u,v) for (u,v,d) in G.edges(data = True) if d["weight"] > border or d["weight"] < border*-1]
+    out_all = [(u,v) for (u,v,d) in G.edges(data = True) if d["weight"] > -2]
+
+    pos = nx.circular_layout(G)
+
+    nx.draw_networkx_nodes(G, pos, node_size = 10, node_color ='black', node_shape = 'o')
+    nx.draw_networkx_edges(G, pos, edgelist = out_all, width = 1, style = ":")
+    nx.draw_networkx_edges(G, pos, edgelist = out_strong, width = 2)
+
+    pos_higher = {}
+
+    for k, v in pos.items():
+        if(v[1]>0):
+            pos_higher[k] = (v[0]-0.1, v[1]+0.1)
+        else:
+            pos_higher[k] = (v[0]-0.1, v[1]-0.1)
+
+    nx.draw_networkx_labels(G, pos_higher, font_size = 10, font_family = "sans-serif")
+
+    labs = nx.get_edge_attributes(G, "weight")
+    nx.draw_networkx_edge_labels(G, pos, labs, label_pos = 0.33, font_size = 8)
+
+#COMPUTATION OF CORRELATION INFLUENCE
+
+#directly influential variables
+
+dir = [d for d in G.neighbors(qF)]
+
+print("Direct correlation influence:")
+print(dir)
+print()
+
+#indirecly influential variables
+
+print("Indirect correlation influence:")
+
+indir2 = []
+
+for par in range(len(dir)):
+    indir = [i for i in G.neighbors(dir[par])]
+    for item in range(len(indir)):
+        if indir[item] != qF:
+           indir2.append(indir[item])
+
+s = set(dir)
+
+indir3 = [x for x in indir2 if x not in s]
+
+unique(indir3)
+
+print()
+
+#GRAPH DRAWING
+
+ax = plt.gca()
+ax.margins(0.08)
+plt.axis("off")
+plt.tight_layout()
+plt.show()
